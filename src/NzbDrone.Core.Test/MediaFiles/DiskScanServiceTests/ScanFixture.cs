@@ -448,6 +448,68 @@ namespace NzbDrone.Core.Test.MediaFiles.DiskScanServiceTests
         }
 
         [Test]
+        public void should_insert_each_unmatched_path_once_when_decisions_repeat_it()
+        {
+            GivenArtistFolder();
+
+            var files = new List<string>
+            {
+                Path.Combine(_artist.Path, "Live 1", "01.flac"),
+                Path.Combine(_artist.Path, "Live 2", "01.flac")
+            };
+
+            GivenFiles(files);
+            GivenKnownFiles(new List<string>());
+
+            // the same file rejected once per candidate album
+            Mocker.GetMock<IMakeImportDecision>()
+                .Setup(x => x.GetImportDecisions(It.IsAny<List<IFileInfo>>(), It.IsAny<IdentificationOverrides>(), It.IsAny<ImportDecisionMakerInfo>(), It.IsAny<ImportDecisionMakerConfig>()))
+                .Returns((List<IFileInfo> fileList, IdentificationOverrides idOverrides, ImportDecisionMakerInfo idInfo, ImportDecisionMakerConfig idConfig) =>
+                          fileList.Concat(fileList)
+                          .Select(x => new LocalTrack
+                          {
+                              Artist = _artist,
+                              Path = x.FullName,
+                              Modified = x.LastWriteTimeUtc,
+                              FileTrackInfo = new ParsedTrackInfo()
+                          })
+                          .Select(x => new ImportDecision<LocalTrack>(x, new Rejection("Album match is not close enough")))
+                          .ToList());
+
+            Subject.Scan(new List<string> { _artist.Path });
+
+            Mocker.GetMock<IMediaFileService>()
+                .Verify(x => x.AddMany(It.Is<List<TrackFile>>(l => l.Select(t => t.Path).SequenceEqual(files))),
+                        Times.Once());
+        }
+
+        [Test]
+        public void should_not_insert_unmatched_paths_already_stored_outside_the_scanned_base_path()
+        {
+            GivenArtistFolder();
+
+            var files = new List<string>
+            {
+                Path.Combine(_artist.Path, "Album", "01.flac"),
+                Path.Combine(_artist.Path, "Album", "02.flac")
+            };
+
+            GivenFiles(files);
+            GivenKnownFiles(new List<string>());
+            GivenRejections();
+
+            Mocker.GetMock<IMediaFileService>()
+                .Setup(x => x.GetFileWithPath(It.IsAny<List<string>>()))
+                .Returns(new List<TrackFile> { new TrackFile { Path = files[0] } });
+
+            Subject.Scan(new List<string> { _artist.Path });
+
+            Mocker.GetMock<IMediaFileService>()
+                .Verify(x => x.AddMany(It.Is<List<TrackFile>>(l => l.Select(t => t.Path).SequenceEqual(files.GetRange(1, 1)))),
+                        Times.Once());
+        }
+
+        [Test]
         public void should_not_insert_files_when_all_known()
         {
             GivenArtistFolder();

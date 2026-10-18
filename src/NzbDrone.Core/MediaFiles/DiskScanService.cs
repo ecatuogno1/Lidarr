@@ -197,8 +197,19 @@ namespace NzbDrone.Core.MediaFiles
             var knownFiles = new List<TrackFile>();
             folders.ForEach(x => knownFiles.AddRange(_mediaFileService.GetFilesWithBasePath(x)));
 
-            var newFiles = decisions
+            // A path can appear in more than one decision (for example once per candidate album)
+            // and may already be stored outside the scanned base path. Insert each unknown path once
+            // so a single duplicate cannot abort the whole scan with a unique-constraint failure.
+            var candidates = decisions
                 .ExceptBy(x => x.Item.Path, knownFiles, x => x.Path, PathEqualityComparer.Instance)
+                .DistinctBy(x => x.Item.Path, PathEqualityComparer.Instance)
+                .ToList();
+            var alreadyStored = (_mediaFileService.GetFileWithPath(candidates.Select(x => x.Item.Path).ToList()) ?? new List<TrackFile>())
+                .Select(x => x.Path)
+                .ToHashSet(PathEqualityComparer.Instance);
+
+            var newFiles = candidates
+                .Where(x => !alreadyStored.Contains(x.Item.Path))
                 .Select(decision => new TrackFile
                 {
                     Path = decision.Item.Path,
