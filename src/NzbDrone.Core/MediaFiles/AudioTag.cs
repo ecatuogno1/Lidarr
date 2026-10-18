@@ -328,6 +328,11 @@ namespace NzbDrone.Core.MediaFiles
             AlbumArtists = AlbumArtists ?? Array.Empty<string>();
             Genres = Genres ?? Array.Empty<string>();
 
+            // TagLib's static default writes ID3v2 genres as numeric ID3v1 codes. It must be
+            // switched off before the genres are assigned, otherwise the first file written after
+            // startup gets numeric (or ID3v1-renamed) genres. The genre list is written in order.
+            TagLib.Id3v2.Tag.UseNumericGenres = false;
+
             TagLib.File file = null;
             try
             {
@@ -361,7 +366,6 @@ namespace NzbDrone.Core.MediaFiles
 
                 if (file.TagTypes.HasFlag(TagTypes.Id3v2))
                 {
-                    TagLib.Id3v2.Tag.UseNumericGenres = false;
                     var id3tag = (TagLib.Id3v2.Tag)file.GetTag(TagTypes.Id3v2);
                     id3tag.SetTextFrame("TMED", Media);
                     WriteId3Date(id3tag, "TDRC", "TYER", "TDAT", Date);
