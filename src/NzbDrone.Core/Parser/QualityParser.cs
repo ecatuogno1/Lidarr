@@ -576,11 +576,13 @@ namespace NzbDrone.Core.Parser
 
                     return Quality.Unknown;
                 case Codec.OPUS:
-                    if (bitrate < 130)
+                    if (bitrate <= 0)
                     {
                         return Quality.Unknown;
                     }
 
+                    // Opus stays transparent far below Vorbis bitrates; a known low bitrate maps to
+                    // the lowest Opus quality instead of Unknown.
                     if (bitrate < 180)
                     {
                         return Quality.VORBIS_Q5;
